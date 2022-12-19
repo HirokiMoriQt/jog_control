@@ -9,6 +9,8 @@
 #include <QTimer>
 #include "jog_frame_panel.h"
 #include "jog_msgs/JogFrame.h"
+#include "tf2_ros/buffer.h"
+#include "tf2_ros/transform_listener.h"
 
 namespace jog_controller
 {
@@ -191,20 +193,23 @@ void JogFramePanel::onInitialize()
 
 void JogFramePanel::update()
 {
-  tf::TransformListener* tf = vis_manager_->getTFClient();
-  tf::StampedTransform transform;
+  auto buffer = vis_manager_->getTF2BufferPtr();
+  tf2_ros::TransformListener tf(*buffer);
+
+  geometry_msgs::TransformStamped transform;
   try{
-    tf->lookupTransform(frame_id_, target_link_id_, ros::Time(0), transform);
+    transform = buffer->lookupTransform(frame_id_, target_link_id_, ros::Time(0));
   }
-  catch (tf::TransformException ex){
+  catch (tf2::TransformException &ex){
     ROS_ERROR("%s",ex.what());
   }  
-  fillNumericLabel(pos_x_text_, transform.getOrigin().x());
-  fillNumericLabel(pos_y_text_, transform.getOrigin().y());
-  fillNumericLabel(pos_z_text_, transform.getOrigin().z());
+  fillNumericLabel(pos_x_text_, transform.transform.translation.x);
+  fillNumericLabel(pos_y_text_, transform.transform.translation.y);
+  fillNumericLabel(pos_z_text_, transform.transform.translation.z);
 
   // RPY
-  tf::Quaternion q = transform.getRotation();
+  tf::Quaternion q;
+  quaternionMsgToTF(transform.transform.rotation, q);
   tf::Matrix3x3 m(q);
   double roll, pitch, yaw;
   m.getRPY(roll, pitch, yaw);
@@ -232,7 +237,7 @@ void JogFramePanel::updateFrame()
 {
   typedef std::vector<std::string> V_string;
   V_string frames;
-  vis_manager_->getTFClient()->getFrameStrings( frames );
+  vis_manager_->getTF2BufferPtr()->_getFrameStrings( frames );
   std::sort(frames.begin(), frames.end());
   frame_cbox_->clear();
   for (V_string::iterator it = frames.begin(); it != frames.end(); ++it )
